@@ -19,7 +19,7 @@ def extract_policy_data(text: str) -> dict:
     Extracts key fiscal parameters from a raw policy document text
     using the specified LLM.
     """
-    model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b:fre")
+    model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
     prompt = f"""
     You are an expert fiscal analyst. Extract the following from the policy document text.
     Return JSON format only, matching this exact structure:
