@@ -2,33 +2,56 @@ import { useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { DownloadCloud, SlidersHorizontal, AlertTriangle, TrendingDown, Building, Droplets, Calendar, ArrowUpRight } from 'lucide-react';
 
-const areaData = [
-  { year: '2024', ratio: 64.1 },
-  { year: '2025', ratio: 65.2 },
-  { year: '2026', ratio: 66.8 },
-  { year: '2027', ratio: 68.1 },
-  { year: '2028', ratio: 68.4 }
-];
-
-const barData = [
-  { name: 'REVENUE', baseline: 12.4, stress: 12.0 },
-  { name: 'EXPENSE', baseline: 11.2, stress: 14.1 },
-  { name: 'DEFICIT', baseline: 4.0, stress: 6.8 },
-  { name: 'DEBT LOAD', baseline: 65.0, stress: 68.4 }
-];
+import { useSearchParams } from 'react-router-dom';
 
 export default function Dashboard() {
+  const [searchParams] = useSearchParams();
+  const policy_id = searchParams.get('policy_id') || 'mock-policy-123';
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    // In real app, fetch from backend (/results/{id})
-    // For now mock response delay
-    setTimeout(() => setData(true), 500);
-  }, []);
+    fetch(`http://127.0.0.1:8000/results/${policy_id}`)
+      .then(res => res.json())
+      .then(json => setData(json))
+      .catch(err => {
+        console.error(err);
+        setData({});
+      });
+  }, [policy_id]);
 
   if (!data) {
     return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: '4rem' }}>Loading Simulation Results...</div>;
   }
+
+  const {
+      fiscal_strain_score = 72,
+      risk_category = "High Risk",
+      projected_deficit_absolute = 4.2,
+      projected_deficit_increase = 8.5,
+      reserve_depletion_year = 3,
+      debt_to_gdp_projection = [
+          { year: '2024', ratio: 64.1 },
+          { year: '2025', ratio: 65.2 },
+          { year: '2026', ratio: 66.8 },
+          { year: '2027', ratio: 68.1 },
+          { year: '2028', ratio: 68.4 }
+        ],
+      baseline_vs_stress = [
+          { name: 'REVENUE', baseline: 12.4, stress: 12.0 },
+          { name: 'EXPENSE', baseline: 11.2, stress: 14.1 },
+          { name: 'DEFICIT', baseline: 4.0, stress: 6.8 },
+          { name: 'DEBT LOAD', baseline: 65.0, stress: 68.4 }
+        ],
+      delta = -12.5,
+      early_warnings = [],
+      breakdown = {
+          spending_commitment: 4.2,
+          revenue_impact: -1.5,
+          duration: 60,
+          sectors: ["Social Welfare", "Treasury"],
+          metrics: []
+      }
+  } = data || {};
 
   return (
     <div className="container" style={{ padding: '2rem' }}>
@@ -54,38 +77,40 @@ export default function Dashboard() {
         <div className="card stat-card">
           <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Fiscal Strain Score</h5>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem', marginTop: '1rem' }}>
-            <span style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1 }}>72</span>
+            <span style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1 }}>{fiscal_strain_score}</span>
             <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>/100</span>
           </div>
           <div style={{ marginTop: '1.5rem' }}>
              <div style={{ width: '100%', height: '8px', background: 'var(--bg-app)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
-               <div style={{ width: '72%', background: 'linear-gradient(90deg, #f59e0b, #ef4444)', height: '100%' }}></div>
+               <div style={{ width: `${fiscal_strain_score}%`, background: 'linear-gradient(90deg, #f59e0b, #ef4444)', height: '100%' }}></div>
              </div>
-             <p style={{ margin: 0, marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--accent-red)', fontWeight: 500 }}>+12% from baseline</p>
+             <p style={{ margin: 0, marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--accent-red)', fontWeight: 500 }}>{fiscal_strain_score > 50 ? '+' : '-'}{Math.abs(fiscal_strain_score - 40)}% from baseline</p>
           </div>
         </div>
 
         <div className="card stat-card" style={{ position: 'relative', overflow: 'hidden' }}>
           <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Risk Category</h5>
           <div style={{ marginTop: '1rem' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>High Risk</h2>
-            <span className="badge badge-red" style={{ marginTop: '0.5rem' }}>Critical Threshold Breached</span>
+            <h2 style={{ fontSize: '2rem', margin: 0 }}>{risk_category}</h2>
+            {fiscal_strain_score > 70 && <span className="badge badge-red" style={{ marginTop: '0.5rem' }}>Critical Threshold Breached</span>}
+            {fiscal_strain_score <= 70 && fiscal_strain_score > 40 && <span className="badge badge-yellow" style={{ marginTop: '0.5rem' }}>Monitor Carefully</span>}
+            {fiscal_strain_score <= 40 && <span className="badge badge-gray" style={{ marginTop: '0.5rem', background: '#dcfce7', color: '#16a34a' }}>Stable Outlook</span>}
           </div>
           <AlertTriangle size={80} color="var(--accent-red-light)" style={{ position: 'absolute', right: '-10px', top: '30px', zIndex: 0 }} />
           <p style={{ margin: 0, marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', position: 'relative', zIndex: 1 }}>
-            Requires immediate mitigation plan
+            {risk_category === "High Risk" ? "Requires immediate mitigation plan" : risk_category === "Moderate Risk" ? "Requires careful balancing" : "Safe to proceed"}
           </p>
         </div>
 
         <div className="card stat-card">
           <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Projected Deficit</h5>
           <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>$4.2B</h2>
+            <h2 style={{ fontSize: '2rem', margin: 0 }}>${projected_deficit_absolute}B</h2>
             <TrendingDown size={40} color="var(--border-color)" />
           </div>
           <div style={{ marginTop: '1.5rem' }}>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--accent-red)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-               <ArrowUpRight size={14} /> 8.5% increase YoY
+            <p style={{ margin: 0, fontSize: '0.875rem', color: projected_deficit_increase > 0 ? 'var(--accent-red)' : '#16a34a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+               <ArrowUpRight size={14} /> {projected_deficit_increase}% expected change
             </p>
             <p style={{ margin: 0, fontSize: '0.75rem', marginTop: '0.25rem' }}>Based on current revenue models</p>
           </div>
@@ -94,14 +119,14 @@ export default function Dashboard() {
         <div className="card stat-card">
           <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Reserve Depletion</h5>
           <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>Year 3</h2>
+            <h2 style={{ fontSize: '2rem', margin: 0 }}>Year {reserve_depletion_year}</h2>
             <Building size={40} color="var(--accent-blue-light)" />
           </div>
           <div style={{ marginTop: '1.5rem' }}>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--warning-yellow)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-               ▲ Faster than predicted
+            <p style={{ margin: 0, fontSize: '0.875rem', color: reserve_depletion_year <= 3 ? 'var(--warning-yellow)' : '#16a34a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+               {reserve_depletion_year <= 3 ? '▲ Faster than predicted' : '▼ Within safe limits'}
             </p>
-            <p style={{ margin: 0, fontSize: '0.75rem', marginTop: '0.25rem' }}>Liquidity crunch expected Q3 2026</p>
+            <p style={{ margin: 0, fontSize: '0.75rem', marginTop: '0.25rem' }}>Based on calculated burn rate</p>
           </div>
         </div>
       </div>
@@ -115,13 +140,13 @@ export default function Dashboard() {
               <p style={{ margin: 0, fontSize: '0.875rem' }}>Forecasted debt ratio under current policy parameters</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-               <h2 style={{ margin: 0 }}>68.4%</h2>
-               <p style={{ margin: 0, fontSize: '0.75rem' }}>Peak Debt (2028)</p>
+               <h2 style={{ margin: 0 }}>{debt_to_gdp_projection[debt_to_gdp_projection.length - 1]?.ratio || 0}%</h2>
+               <p style={{ margin: 0, fontSize: '0.75rem' }}>Peak Debt ({debt_to_gdp_projection[debt_to_gdp_projection.length - 1]?.year || '5 Years'})</p>
             </div>
           </div>
           <div className="chart-container">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={areaData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+              <AreaChart data={debt_to_gdp_projection} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRatio" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--accent-blue)" stopOpacity={0.1}/>
@@ -157,13 +182,13 @@ export default function Dashboard() {
               <p style={{ margin: 0, fontSize: '0.875rem' }}>Fiscal Year 2025 Variance Analysis</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-               <h2 style={{ margin: 0, color: 'var(--accent-red)' }}>-$12.5B</h2>
+               <h2 style={{ margin: 0, color: delta < 0 ? '#16a34a' : 'var(--accent-red)' }}>{delta > 0 ? '+' : ''}${delta}B</h2>
                <p style={{ margin: 0, fontSize: '0.75rem' }}>Net Variance</p>
             </div>
           </div>
           <div className="chart-container">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }} barGap={0}>
+              <BarChart data={baseline_vs_stress} margin={{ top: 20, right: 0, left: 0, bottom: 0 }} barGap={0}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)', fontWeight: 500 }} dy={10} />
                 <YAxis hide />
@@ -190,35 +215,19 @@ export default function Dashboard() {
            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-blue)', marginBottom: '1rem', fontSize: '1.125rem' }}>
              <AlertTriangle size={20} /> Early Warning Signals
            </h3>
-           <div className="warning-item warning-item-red">
-             <div style={{ background: 'var(--accent-red-light)', padding: '0.5rem', borderRadius: '50%', height: 'fit-content' }}>
-               <Droplets size={20} color="var(--accent-red)" />
-             </div>
-             <div>
-               <h5 style={{ margin: 0, marginBottom: '0.25rem' }}>Liquidity crunch predicted</h5>
-               <p style={{ margin: 0, fontSize: '0.875rem' }}>Based on current burn rate, cash reserves will dip below statutory minimums in <strong>Q3 2026</strong>.</p>
-             </div>
-           </div>
-           
-           <div className="warning-item warning-item-yellow">
-             <div style={{ background: 'var(--warning-yellow-light)', padding: '0.5rem', borderRadius: '50%', height: 'fit-content' }}>
-               <TrendingDown size={20} color="var(--warning-yellow)" />
-             </div>
-             <div>
-               <h5 style={{ margin: 0, marginBottom: '0.25rem' }}>Revenue Forecast Miss</h5>
-               <p style={{ margin: 0, fontSize: '0.875rem' }}>Tax base contraction of <strong>-1.5%</strong> expected due to sector-specific slowdowns.</p>
-             </div>
-           </div>
-
-           <div className="warning-item warning-item-yellow">
-             <div style={{ background: 'var(--warning-yellow-light)', padding: '0.5rem', borderRadius: '50%', height: 'fit-content' }}>
-               <Calendar size={20} color="var(--warning-yellow)" />
-             </div>
-             <div>
-               <h5 style={{ margin: 0, marginBottom: '0.25rem' }}>Implementation Delay Risk</h5>
-               <p style={{ margin: 0, fontSize: '0.875rem' }}>Administrative bottlenecks may extend rollout duration by <strong>6 months</strong>.</p>
-             </div>
-           </div>
+           {early_warnings.length > 0 ? early_warnings.map((warning, idx) => (
+               <div key={idx} className={`warning-item ${warning.type === 'Liquidity' ? 'warning-item-red' : 'warning-item-yellow'}`}>
+                 <div style={{ background: warning.type === 'Liquidity' ? 'var(--accent-red-light)' : 'var(--warning-yellow-light)', padding: '0.5rem', borderRadius: '50%', height: 'fit-content' }}>
+                   {warning.type === 'Liquidity' ? <Droplets size={20} color="var(--accent-red)" /> : <TrendingDown size={20} color="var(--warning-yellow)" />}
+                 </div>
+                 <div>
+                   <h5 style={{ margin: 0, marginBottom: '0.25rem' }}>{warning.title}</h5>
+                   <p style={{ margin: 0, fontSize: '0.875rem' }}>{warning.description}</p>
+                 </div>
+               </div>
+           )) : (
+             <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>No critical early warnings detected.</p>
+           )}
         </div>
 
         <div>
@@ -229,24 +238,25 @@ export default function Dashboard() {
              <div style={{ display: 'flex', padding: '1.5rem', borderBottom: '1px solid var(--border-color)', gap: '2rem' }}>
                 <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
                    <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Spending Commitment</p>
-                   <h3 style={{ margin: '0.25rem 0' }}>$4.2B</h3>
-                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Per annum</p>
+                   <h3 style={{ margin: '0.25rem 0' }}>${breakdown.spending_commitment}B</h3>
+                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Per annum base</p>
                 </div>
                 <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
                    <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Revenue Impact</p>
-                   <h3 style={{ margin: '0.25rem 0', color: 'var(--accent-red)' }}>-1.5%</h3>
-                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Tax Base Contraction</p>
+                   <h3 style={{ margin: '0.25rem 0', color: breakdown.revenue_impact < 0 ? 'var(--accent-red)' : '#16a34a' }}>{breakdown.revenue_impact}%</h3>
+                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Tax Base Variance</p>
                 </div>
                 <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
                    <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Duration</p>
-                   <h3 style={{ margin: '0.25rem 0' }}>60 Mos</h3>
+                   <h3 style={{ margin: '0.25rem 0' }}>{breakdown.duration} Mos</h3>
                    <p style={{ margin: 0, fontSize: '0.75rem' }}>Policy Lifecycle</p>
                 </div>
                 <div style={{ flex: 1 }}>
                    <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Primary Sectors</p>
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
-                      <span className="badge badge-gray">Social Welfare</span>
-                      <span className="badge badge-gray">Treasury</span>
+                      {breakdown.sectors.map((s, idx) => (
+                        <span key={idx} className="badge badge-gray">{s}</span>
+                      ))}
                    </div>
                 </div>
              </div>
@@ -261,24 +271,14 @@ export default function Dashboard() {
                  </tr>
                </thead>
                <tbody>
-                 <tr>
-                   <td style={{ fontWeight: 500 }}>Operating Expenses</td>
-                   <td>$12.4B</td>
-                   <td>$14.1B</td>
-                   <td className="text-red">+13.7%</td>
+                 {breakdown.metrics && breakdown.metrics.map((m, idx) => (
+                 <tr key={idx}>
+                   <td style={{ fontWeight: 500 }}>{m.category}</td>
+                   <td>{m.baseline}</td>
+                   <td>{m.stress}</td>
+                   <td className={m.delta && m.delta.startsWith('+') ? "text-red" : ""}>{m.delta}</td>
                  </tr>
-                 <tr>
-                   <td style={{ fontWeight: 500 }}>Capital Expenditures</td>
-                   <td>$5.8B</td>
-                   <td>$6.2B</td>
-                   <td className="text-red">+6.9%</td>
-                 </tr>
-                 <tr>
-                   <td style={{ fontWeight: 500 }}>Interest Payments</td>
-                   <td>$0.9B</td>
-                   <td>$1.4B</td>
-                   <td className="text-red">+55.5%</td>
-                 </tr>
+                 ))}
                </tbody>
              </table>
              

@@ -53,7 +53,22 @@ async def analyze_policy(file: UploadFile = File(...)):
     
     # 1. Read file
     contents = await file.read()
-    text_content = contents.decode('utf-8')[:5000] # Limit size for prompt
+    text_content = ""
+    try:
+        # Check if PDF
+        if file.filename.lower().endswith('.pdf'):
+            import io
+            from pypdf import PdfReader
+            pdf = PdfReader(io.BytesIO(contents))
+            for page in pdf.pages:
+                text_content += page.extract_text() + "\n"
+        else:
+            text_content = contents.decode('utf-8')
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        text_content = contents.decode('utf-8', errors='ignore')
+
+    text_content = text_content[:5000] # Limit size for prompt
     
     # 2. Extract data via AI
     extracted_data = extract_policy_data(text_content)

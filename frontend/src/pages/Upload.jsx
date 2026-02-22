@@ -5,17 +5,55 @@ import { UploadCloud, Folder, FileType2, Settings2, Info } from 'lucide-react';
 export default function Upload() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [file, setFile] = useState(null);
   const [debt, setDebt] = useState('24,500');
   const [gdp, setGdp] = useState('18,200');
   const [deficit, setDeficit] = useState('5.4');
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
+    if (!file) {
+      alert("Please select a policy document to upload first.");
+      return;
+    }
+
     setLoading(true);
-    // Simulate API call and analysis processing
-    setTimeout(() => {
+    try {
+      // 1. Upload & Analyze
+      const formData = new FormData();
+      formData.append('file', file);
+      const analyzeRes = await fetch('http://127.0.0.1:8000/analyze-policy', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!analyzeRes.ok) {
+        throw new Error("Failed to analyze policy document. Is the backend running?");
+      }
+      const analyzeData = await analyzeRes.json();
+      
+      // 2. Run Simulation
+      const simRes = await fetch('http://127.0.0.1:8000/run-simulation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policy_id: analyzeData.policy_id,
+          baseline_debt: parseFloat(debt.replace(/,/g, '')),
+          baseline_gdp: parseFloat(gdp.replace(/,/g, '')),
+          current_deficit: parseFloat(deficit.replace(/,/g, ''))
+        })
+      });
+
+      if (!simRes.ok) {
+        throw new Error("Failed to run simulation.");
+      }
+      
+      // Navigate to dashboard
+      navigate(`/dashboard?policy_id=${analyzeData.policy_id}`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
       setLoading(false);
-      navigate('/dashboard');
-    }, 1500);
+    }
   };
 
   return (
@@ -34,20 +72,28 @@ export default function Upload() {
         {/* Main Upload Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div className="card" style={{ padding: '0.5rem' }}>
-            <div className="upload-zone" onClick={handleUpload}>
+            <div className="upload-zone" style={{ position: 'relative', cursor: 'pointer' }}>
+              <input 
+                type="file" 
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} 
+                onChange={(e) => setFile(e.target.files[0])}
+              />
               <div className="upload-icon-wrapper">
                 <UploadCloud size={24} />
               </div>
               <h3 style={{ margin: 0 }}>Drag and drop your policy file here</h3>
-              <p style={{ margin: 0, fontSize: '0.875rem' }}>Max file size 50MB</p>
               
+              <div style={{ padding: '0.5rem 1rem', background: 'var(--bg-app)', borderRadius: '4px', marginTop: '1rem', border: '1px solid var(--border-color)', fontSize: '0.875rem', color: file ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}>
+                {file ? file.name : 'No file selected. Please select a PDF or CSV.'}
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', width: '200px', margin: '1rem 0', gap: '1rem' }}>
                 <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>OR</span>
                 <div style={{ flex: 1, height: '1px', background: 'var(--border-color)' }}></div>
               </div>
               
-              <button className="btn btn-outline" style={{ background: 'white' }} onClick={(e) => { e.stopPropagation(); alert("File browser would open here"); }}>
+              <button className="btn btn-outline" style={{ background: 'white' }}>
                 <Folder size={16} /> Browse files
               </button>
             </div>
