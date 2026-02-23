@@ -1,14 +1,12 @@
 import os
 import uuid
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from typing import Optional
 
 from extractor import extract_policy_data
 from simulation import run_stress_test
-from advisor import generate_recommendations
 from fastapi.responses import Response
 
 # Load environment variables
@@ -24,19 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Supabase Client (optional)
-supabase = None
-try:
-    from supabase import create_client
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
-    if supabase_url and supabase_key:
-        supabase = create_client(supabase_url, supabase_key)
-        print("Supabase connected.")
-except Exception as e:
-    print(f"Supabase not available: {e}")
-
-# In-memory store for when Supabase is unavailable
+# In-memory store (No Database)
 _memory_store: dict = {}  # policy_id -> { "extracted": {...}, "results": {...} }
 
 class SimulationRequest(BaseModel):
@@ -72,22 +58,9 @@ async def analyze_policy(file: UploadFile = File(...)):
     # 2. Extract data via AI
     extracted_data = extract_policy_data(text_content)
 
-    # 3. Persist (Supabase if available, else in-memory)
+    # 3. Persist in memory
     policy_id = str(uuid.uuid4())
-    if supabase:
-        try:
-            policy_res = supabase.table("policies").insert({"name": file.filename}).execute()
-            if policy_res.data:
-                policy_id = policy_res.data[0]["id"]
-            supabase.table("structured_inputs").insert({
-                "policy_id": policy_id,
-                "data": extracted_data
-            }).execute()
-        except Exception as e:
-            print(f"Supabase insert failed, using memory: {e}")
-            _memory_store[policy_id] = {"extracted": extracted_data}
-    else:
-        _memory_store[policy_id] = {"extracted": extracted_data}
+    _memory_store[policy_id] = {"extracted": extracted_data}
 
     return {
         "message": "Policy analyzed successfully",
@@ -97,22 +70,9 @@ async def analyze_policy(file: UploadFile = File(...)):
 
 @app.post("/run-simulation")
 def run_simulation(request: SimulationRequest):
-    # 1. Fetch extracted data
-    extracted_data = {}
-    retrieved = False
-
-    if supabase:
-        try:
-            res = supabase.table("structured_inputs").select("data").eq("policy_id", request.policy_id).execute()
-            if res.data:
-                extracted_data = res.data[0]["data"]
-                retrieved = True
-        except Exception:
-            pass
-
-    if not retrieved:
-        mem = _memory_store.get(request.policy_id, {})
-        extracted_data = mem.get("extracted", {})
+    # 1. Fetch extracted data from memory
+    mem = _memory_store.get(request.policy_id, {})
+    extracted_data = mem.get("extracted", {})
 
     # 2. Run math engine
     results = run_stress_test(
@@ -126,44 +86,22 @@ def run_simulation(request: SimulationRequest):
     )
     results["policy_id"] = request.policy_id
 
-    # 3. Persist results
-    if supabase:
-        try:
-            supabase.table("simulation_results").insert({
-                "policy_id": request.policy_id,
-                "results": results
-            }).execute()
-        except Exception as e:
-            print(f"Supabase results save failed, using memory: {e}")
-            if request.policy_id in _memory_store:
-                _memory_store[request.policy_id]["results"] = results
-            else:
-                _memory_store[request.policy_id] = {"results": results}
+    # 3. Persist results in memory
+    if request.policy_id in _memory_store:
+        _memory_store[request.policy_id]["results"] = results
     else:
-        if request.policy_id in _memory_store:
-            _memory_store[request.policy_id]["results"] = results
-        else:
-            _memory_store[request.policy_id] = {"results": results}
+        _memory_store[request.policy_id] = {"results": results}
 
     return results
 
 @app.get("/results/{policy_id}")
 def get_results(policy_id: str):
-    # Try Supabase first
-    if supabase:
-        try:
-            response = supabase.table("simulation_results").select("results").eq("policy_id", policy_id).execute()
-            if response.data:
-                return response.data[0]["results"]
-        except Exception:
-            pass
-
-    # Fallback to in-memory
+    # Fetch from memory
     mem = _memory_store.get(policy_id, {})
     if "results" in mem:
         return mem["results"]
 
-    # Final fallback: run with defaults so dashboard always loads
+    # Fallback to defaults so dashboard always loads
     results = run_stress_test(
         baseline_debt=24500.0,
         baseline_gdp=18200.0,
@@ -176,20 +114,7 @@ def get_results(policy_id: str):
     results["policy_id"] = policy_id
     return results
 
-@app.get("/recommendations/{policy_id}")
-def get_recommendations(policy_id: str):
-    """Generate AI-powered mitigation recommendations."""
-    # Get simulation results first
-    results = None
-    mem = _memory_store.get(policy_id, {})
-    if "results" in mem:
-        results = mem["results"]
-    
-    if not results:
-        return []
-    
-    recs = generate_recommendations(results)
-    return recs
+
 
 @app.get("/export/{policy_id}")
 def export_report(policy_id: str):

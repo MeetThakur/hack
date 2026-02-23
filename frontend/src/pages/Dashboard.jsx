@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, TrendingDown, Droplets, ArrowUpRight, Download, Lightbulb, Zap, Shield, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Droplets, ArrowUpRight, Download, SlidersHorizontal } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 // Client-side strain score calculator (mirrors backend logic)
@@ -23,8 +23,6 @@ export default function Dashboard() {
   const policy_id = searchParams.get('policy_id');
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [recs, setRecs] = useState(null);
-  const [recsLoading, setRecsLoading] = useState(false);
 
   // What-if sliders
   const [whatIfSpending, setWhatIfSpending] = useState(null);
@@ -37,15 +35,7 @@ export default function Dashboard() {
       .catch(() => setError('Failed to load results.'));
   }, [policy_id]);
 
-  // Fetch AI recommendations
-  useEffect(() => {
-    if (!policy_id) return;
-    setRecsLoading(true);
-    fetch(`http://127.0.0.1:8000/recommendations/${policy_id}`)
-      .then(r => r.json()).then(setRecs)
-      .catch(() => setRecs([]))
-      .finally(() => setRecsLoading(false));
-  }, [policy_id]);
+
 
   // Initialize sliders once data loads
   useEffect(() => {
@@ -81,8 +71,7 @@ export default function Dashboard() {
 
   const { fiscal_strain_score, risk_category, projected_deficit_absolute, projected_deficit_increase, reserve_depletion_year, debt_to_gdp_projection = [], baseline_vs_stress = [], delta, early_warnings = [], breakdown = {} } = data;
 
-  const impactIcons = { high: <Zap size={14} />, medium: <Shield size={14} />, low: <Lightbulb size={14} /> };
-  const impactColors = { high: { bg: 'var(--red-light)', color: 'var(--red)' }, medium: { bg: 'var(--amber-light)', color: 'var(--amber)' }, low: { bg: 'var(--green-light)', color: 'var(--green)' } };
+
 
   return (
     <div className="container" style={{ paddingBottom: '3rem' }}>
@@ -157,8 +146,8 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
                 <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} dy={6} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} domain={['dataMin - 5', 'dataMax + 5']} />
-                <Tooltip contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)' }} />
-                <Area type="monotone" dataKey="ratio" stroke="var(--accent)" strokeWidth={2} fill="url(#cR)" dot={{ r: 3, fill: 'white', stroke: 'var(--accent)', strokeWidth: 2 }} />
+                <Tooltip contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)', background: '#1e1e1e', color: '#f5f5f5' }} />
+                <Area type="monotone" dataKey="ratio" stroke="var(--accent)" strokeWidth={2} fill="url(#cR)" dot={{ r: 3, fill: '#141414', stroke: 'var(--accent)', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -175,8 +164,8 @@ export default function Dashboard() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: 'var(--text-tertiary)', fontWeight: 500 }} dy={6} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} />
-                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)' }} />
-                <Bar dataKey="baseline" fill="var(--border-color)" radius={[3, 3, 0, 0]} maxBarSize={28} name="Baseline" />
+                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)', background: '#1e1e1e', color: '#f5f5f5' }} />
+                <Bar dataKey="baseline" fill="#2a2a2a" radius={[3, 3, 0, 0]} maxBarSize={28} name="Baseline" />
                 <Bar dataKey="stress" fill="var(--accent)" radius={[3, 3, 0, 0]} maxBarSize={28} name="Stress" />
               </BarChart>
             </ResponsiveContainer>
@@ -258,37 +247,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── AI Recommendations ── */}
-      <div className="card" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
-        <h3 style={{ margin: 0, fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.75rem' }}>
-          <Lightbulb size={14} /> AI Mitigation Recommendations
-        </h3>
-        {recsLoading ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
-            <div style={{ width: '14px', height: '14px', border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>
-            Generating recommendations...
-          </div>
-        ) : recs && recs.length > 0 ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
-            {recs.slice(0, 3).map((r, i) => (
-              <div key={i} style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-app)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.375rem' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: impactColors[r.impact]?.bg || 'var(--bg-subtle)', color: impactColors[r.impact]?.color || 'var(--text-secondary)' }}>
-                    {impactIcons[r.impact] || <Lightbulb size={12} />}
-                  </span>
-                  <span className="badge" style={{ background: impactColors[r.impact]?.bg || 'var(--bg-subtle)', color: impactColors[r.impact]?.color || 'var(--text-secondary)', fontSize: '0.5625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    {r.impact} impact
-                  </span>
-                </div>
-                <h5 style={{ margin: 0, fontSize: '0.75rem', marginBottom: '0.25rem' }}>{r.title}</h5>
-                <p style={{ margin: 0, fontSize: '0.6875rem', lineHeight: 1.4 }}>{r.description}</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>No recommendations available.</p>
-        )}
-      </div>
 
       {/* ── Extracted Parameters ── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1rem' }}>

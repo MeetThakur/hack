@@ -1,26 +1,23 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 
-export default function Login() {
+export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
     try {
-      // Mock logic for demo simplicity allowing any credentials to pass if Supabase isn't real
       if (email && password) {
+        if (onLogin) onLogin({ email });
         navigate('/upload');
       }
     } catch (err) {
-      setError(err.message);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -30,27 +27,19 @@ export default function Login() {
     <div className="login-page">
       <div className="card login-card">
         <div className="login-header">
-          <h2>Welcome Back</h2>
-          <p>Sign in to access fiscal risk simulations and policy analysis tools.</p>
-        </div>
-
-        <div className="toggle-group">
-          <div className="toggle-btn active">Sign In</div>
-          <div className="toggle-btn">Create Account</div>
+          <h1 style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>Welcome Back</h1>
+          <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Login to continue analyzing policies</p>
         </div>
 
         <form onSubmit={handleLogin}>
-          {error && <div style={{ color: 'var(--accent-red)', marginBottom: '1rem', fontSize: '14px' }}>{error}</div>}
-          
           <div className="input-group">
-            <label className="input-label">Email Address</label>
             <div style={{ position: 'relative' }}>
               <Mail size={16} color="var(--text-tertiary)" style={{ position: 'absolute', top: '12px', left: '12px' }} />
-              <input 
-                type="email" 
-                className="input-field" 
-                placeholder="name@institution.org"
-                style={{ paddingLeft: '32px' }}
+              <input
+                type="email"
+                className="input-field"
+                placeholder="Email address"
+                style={{ paddingLeft: '36px' }}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -59,17 +48,13 @@ export default function Login() {
           </div>
 
           <div className="input-group">
-            <div>
-              <label className="input-label">Password</label>
-              <span className="input-label-secondary">Forgot password?</span>
-            </div>
             <div style={{ position: 'relative' }}>
               <Lock size={16} color="var(--text-tertiary)" style={{ position: 'absolute', top: '12px', left: '12px' }} />
-              <input 
-                type="password" 
-                className="input-field" 
-                placeholder="Enter your password"
-                style={{ paddingLeft: '32px' }}
+              <input
+                type="password"
+                className="input-field"
+                placeholder="Password"
+                style={{ paddingLeft: '36px' }}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -77,16 +62,24 @@ export default function Login() {
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary btn-full" disabled={loading} style={{ marginTop: '1rem' }}>
-            {loading ? 'Signing In...' : 'Sign In'} <ArrowRight size={16} />
+          <div style={{ textAlign: 'right', marginBottom: '1.5rem' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--accent)', cursor: 'pointer' }}>Forgot password?</span>
+          </div>
+
+          <button type="submit" className="btn btn-primary btn-full" disabled={loading} style={{ padding: '0.75rem', fontSize: '0.9375rem' }}>
+            {loading ? 'Signing In...' : 'Login'}
           </button>
         </form>
 
-        <div className="divider">OR CONTINUE WITH</div>
+        <div className="divider">OR</div>
 
-        <button type="button" className="btn btn-outline btn-full" onClick={() => navigate('/upload')}>
-          Demo Login
+        <button type="button" className="btn btn-outline btn-full" onClick={() => { if (onLogin) onLogin({ email: 'guest@example.com' }); navigate('/upload'); }} style={{ padding: '0.625rem' }}>
+          Continue as Guest
         </button>
+
+        <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
+          Don't have an account? <span style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }}>Sign Up</span>
+        </p>
       </div>
     </div>
   );
