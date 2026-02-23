@@ -1,292 +1,325 @@
-import { useState, useEffect } from 'react';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { DownloadCloud, SlidersHorizontal, AlertTriangle, TrendingDown, Building, Droplets, Calendar, ArrowUpRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AlertTriangle, TrendingDown, Droplets, ArrowUpRight, Download, Lightbulb, Zap, Shield, SlidersHorizontal } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
-import { useSearchParams } from 'react-router-dom';
+// Client-side strain score calculator (mirrors backend logic)
+function calcStrain(spending, revenueImpact, gdp) {
+  const base = 40;
+  const spendStrain = Math.abs(spending) * 5;
+  const revStrain = Math.abs(Math.min(0, (revenueImpact / 100) * gdp)) * 3;
+  return Math.min(100, Math.max(0, Math.round(base + spendStrain + revStrain)));
+}
+
+function riskLabel(score) {
+  if (score > 70) return 'High Risk';
+  if (score > 40) return 'Moderate Risk';
+  return 'Low Risk';
+}
 
 export default function Dashboard() {
   const [searchParams] = useSearchParams();
-  const policy_id = searchParams.get('policy_id') || 'mock-policy-123';
+  const navigate = useNavigate();
+  const policy_id = searchParams.get('policy_id');
   const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [recs, setRecs] = useState(null);
+  const [recsLoading, setRecsLoading] = useState(false);
+
+  // What-if sliders
+  const [whatIfSpending, setWhatIfSpending] = useState(null);
+  const [whatIfRevenue, setWhatIfRevenue] = useState(null);
 
   useEffect(() => {
+    if (!policy_id) { setError('No simulation found. Upload a policy first.'); return; }
     fetch(`http://127.0.0.1:8000/results/${policy_id}`)
-      .then(res => res.json())
-      .then(json => setData(json))
-      .catch(err => {
-        console.error(err);
-        setData({});
-      });
+      .then(r => r.json()).then(setData)
+      .catch(() => setError('Failed to load results.'));
   }, [policy_id]);
 
-  if (!data) {
-    return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: '4rem' }}>Loading Simulation Results...</div>;
+  // Fetch AI recommendations
+  useEffect(() => {
+    if (!policy_id) return;
+    setRecsLoading(true);
+    fetch(`http://127.0.0.1:8000/recommendations/${policy_id}`)
+      .then(r => r.json()).then(setRecs)
+      .catch(() => setRecs([]))
+      .finally(() => setRecsLoading(false));
+  }, [policy_id]);
+
+  // Initialize sliders once data loads
+  useEffect(() => {
+    if (data?.breakdown) {
+      setWhatIfSpending(data.breakdown.spending_commitment ?? 4.2);
+      setWhatIfRevenue(data.breakdown.revenue_impact ?? -1.5);
+    }
+  }, [data]);
+
+  const whatIfScore = useMemo(() => {
+    if (whatIfSpending === null) return null;
+    return calcStrain(whatIfSpending, whatIfRevenue, 18200);
+  }, [whatIfSpending, whatIfRevenue]);
+
+  if (error) {
+    return (
+      <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: '6rem', gap: '1rem' }}>
+        <AlertTriangle size={32} color="var(--text-tertiary)" />
+        <p style={{ color: 'var(--text-tertiary)', margin: 0 }}>{error}</p>
+        <button className="btn btn-primary" onClick={() => navigate('/upload')}>Go to Upload</button>
+      </div>
+    );
   }
 
-  const {
-      fiscal_strain_score = 72,
-      risk_category = "High Risk",
-      projected_deficit_absolute = 4.2,
-      projected_deficit_increase = 8.5,
-      reserve_depletion_year = 3,
-      debt_to_gdp_projection = [
-          { year: '2024', ratio: 64.1 },
-          { year: '2025', ratio: 65.2 },
-          { year: '2026', ratio: 66.8 },
-          { year: '2027', ratio: 68.1 },
-          { year: '2028', ratio: 68.4 }
-        ],
-      baseline_vs_stress = [
-          { name: 'REVENUE', baseline: 12.4, stress: 12.0 },
-          { name: 'EXPENSE', baseline: 11.2, stress: 14.1 },
-          { name: 'DEFICIT', baseline: 4.0, stress: 6.8 },
-          { name: 'DEBT LOAD', baseline: 65.0, stress: 68.4 }
-        ],
-      delta = -12.5,
-      early_warnings = [],
-      breakdown = {
-          spending_commitment: 4.2,
-          revenue_impact: -1.5,
-          duration: 60,
-          sectors: ["Social Welfare", "Treasury"],
-          metrics: []
-      }
-  } = data || {};
+  if (!data) {
+    return (
+      <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: '6rem', gap: '0.5rem' }}>
+        <div style={{ width: '24px', height: '24px', border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>
+        <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>Loading results...</p>
+      </div>
+    );
+  }
+
+  const { fiscal_strain_score, risk_category, projected_deficit_absolute, projected_deficit_increase, reserve_depletion_year, debt_to_gdp_projection = [], baseline_vs_stress = [], delta, early_warnings = [], breakdown = {} } = data;
+
+  const impactIcons = { high: <Zap size={14} />, medium: <Shield size={14} />, low: <Lightbulb size={14} /> };
+  const impactColors = { high: { bg: 'var(--red-light)', color: 'var(--red)' }, medium: { bg: 'var(--amber-light)', color: 'var(--amber)' }, low: { bg: 'var(--green-light)', color: 'var(--green)' } };
 
   return (
-    <div className="container" style={{ padding: '2rem' }}>
+    <div className="container" style={{ paddingBottom: '3rem' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
-            <h1 style={{ margin: 0 }}>Universal Basic Income Pilot - Model B</h1>
-            <span className="badge badge-gray">v2.4</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
-            <Calendar size={14} /> Simulation ID: #FS-2024-892 • Last run: Oct 24, 2024
-          </div>
+          <h1 style={{ margin: 0, fontSize: '1.5rem' }}>Simulation Results</h1>
+          <p style={{ margin: 0, marginTop: '0.125rem', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+            {policy_id}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button className="btn btn-outline" onClick={() => alert("Assumptions modification panel coming soon!")}><SlidersHorizontal size={16} /> Modify Assumptions</button>
-          <button className="btn btn-primary" onClick={() => alert("Export functionality coming soon. The PDF will be downloaded.")}><DownloadCloud size={16} /> Export Report</button>
-        </div>
+        <button className="btn btn-outline" style={{ fontSize: '0.75rem' }}
+          onClick={() => { window.open(`http://127.0.0.1:8000/export/${policy_id}`, '_blank'); }}>
+          <Download size={14} /> Export PDF
+        </button>
       </div>
 
-      {/* Top Cards */}
-      <div className="dashboard-grid">
-        <div className="card stat-card">
-          <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Fiscal Strain Score</h5>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem', marginTop: '1rem' }}>
-            <span style={{ fontSize: '3rem', fontWeight: 700, lineHeight: 1 }}>{fiscal_strain_score}</span>
-            <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>/100</span>
+      {/* ── KPI Strip ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', fontWeight: 600 }}>Strain Score</p>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.125rem', marginTop: '0.375rem' }}>
+            <span style={{ fontSize: '2rem', fontWeight: 700, lineHeight: 1, letterSpacing: '-0.03em' }}>{fiscal_strain_score}</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>/100</span>
           </div>
-          <div style={{ marginTop: '1.5rem' }}>
-             <div style={{ width: '100%', height: '8px', background: 'var(--bg-app)', borderRadius: '4px', overflow: 'hidden', display: 'flex' }}>
-               <div style={{ width: `${fiscal_strain_score}%`, background: 'linear-gradient(90deg, #f59e0b, #ef4444)', height: '100%' }}></div>
-             </div>
-             <p style={{ margin: 0, marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--accent-red)', fontWeight: 500 }}>{fiscal_strain_score > 50 ? '+' : '-'}{Math.abs(fiscal_strain_score - 40)}% from baseline</p>
+          <div style={{ width: '100%', height: '4px', background: 'var(--bg-subtle)', borderRadius: '2px', marginTop: '0.5rem', overflow: 'hidden' }}>
+            <div style={{ width: `${fiscal_strain_score}%`, height: '100%', borderRadius: '2px', background: fiscal_strain_score > 70 ? 'var(--red)' : fiscal_strain_score > 40 ? 'var(--amber)' : 'var(--green)', transition: 'width 0.5s' }}></div>
           </div>
         </div>
 
-        <div className="card stat-card" style={{ position: 'relative', overflow: 'hidden' }}>
-          <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Risk Category</h5>
-          <div style={{ marginTop: '1rem' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>{risk_category}</h2>
-            {fiscal_strain_score > 70 && <span className="badge badge-red" style={{ marginTop: '0.5rem' }}>Critical Threshold Breached</span>}
-            {fiscal_strain_score <= 70 && fiscal_strain_score > 40 && <span className="badge badge-yellow" style={{ marginTop: '0.5rem' }}>Monitor Carefully</span>}
-            {fiscal_strain_score <= 40 && <span className="badge badge-gray" style={{ marginTop: '0.5rem', background: '#dcfce7', color: '#16a34a' }}>Stable Outlook</span>}
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', fontWeight: 600 }}>Risk Level</p>
+          <h3 style={{ margin: 0, marginTop: '0.375rem', fontSize: '1.25rem' }}>{risk_category}</h3>
+          <div style={{ marginTop: '0.375rem' }}>
+            {fiscal_strain_score > 70 ? <span className="badge badge-red">Critical</span> : fiscal_strain_score > 40 ? <span className="badge badge-yellow">Moderate</span> : <span className="badge badge-gray" style={{ background: 'var(--green-light)', color: 'var(--green)' }}>Stable</span>}
           </div>
-          <AlertTriangle size={80} color="var(--accent-red-light)" style={{ position: 'absolute', right: '-10px', top: '30px', zIndex: 0 }} />
-          <p style={{ margin: 0, marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)', position: 'relative', zIndex: 1 }}>
-            {risk_category === "High Risk" ? "Requires immediate mitigation plan" : risk_category === "Moderate Risk" ? "Requires careful balancing" : "Safe to proceed"}
+        </div>
+
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', fontWeight: 600 }}>Projected Deficit</p>
+          <h3 style={{ margin: 0, marginTop: '0.375rem', fontSize: '1.25rem' }}>${projected_deficit_absolute}B</h3>
+          <p style={{ margin: 0, marginTop: '0.25rem', fontSize: '0.6875rem', color: projected_deficit_increase > 0 ? 'var(--red)' : 'var(--green)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.125rem' }}>
+            <ArrowUpRight size={11} /> {projected_deficit_increase}%
           </p>
         </div>
 
-        <div className="card stat-card">
-          <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Projected Deficit</h5>
-          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>${projected_deficit_absolute}B</h2>
-            <TrendingDown size={40} color="var(--border-color)" />
-          </div>
-          <div style={{ marginTop: '1.5rem' }}>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: projected_deficit_increase > 0 ? 'var(--accent-red)' : '#16a34a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-               <ArrowUpRight size={14} /> {projected_deficit_increase}% expected change
-            </p>
-            <p style={{ margin: 0, fontSize: '0.75rem', marginTop: '0.25rem' }}>Based on current revenue models</p>
-          </div>
-        </div>
-
-        <div className="card stat-card">
-          <h5 style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Reserve Depletion</h5>
-          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontSize: '2rem', margin: 0 }}>Year {reserve_depletion_year}</h2>
-            <Building size={40} color="var(--accent-blue-light)" />
-          </div>
-          <div style={{ marginTop: '1.5rem' }}>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: reserve_depletion_year <= 3 ? 'var(--warning-yellow)' : '#16a34a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-               {reserve_depletion_year <= 3 ? '▲ Faster than predicted' : '▼ Within safe limits'}
-            </p>
-            <p style={{ margin: 0, fontSize: '0.75rem', marginTop: '0.25rem' }}>Based on calculated burn rate</p>
-          </div>
+        <div className="card" style={{ padding: '1rem' }}>
+          <p style={{ margin: 0, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', fontWeight: 600 }}>Reserve Depletion</p>
+          <h3 style={{ margin: 0, marginTop: '0.375rem', fontSize: '1.25rem' }}>Year {reserve_depletion_year}</h3>
+          <p style={{ margin: 0, marginTop: '0.25rem', fontSize: '0.6875rem', color: reserve_depletion_year <= 3 ? 'var(--amber)' : 'var(--green)', fontWeight: 500 }}>
+            {reserve_depletion_year <= 3 ? 'Accelerated' : 'Within limits'}
+          </p>
         </div>
       </div>
 
-      {/* Main Charts area */}
-      <div className="dashboard-grid">
-        <div className="card dashboard-hero">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <h3 style={{ margin: 0 }}>5-Year Debt-to-GDP Projection</h3>
-              <p style={{ margin: 0, fontSize: '0.875rem' }}>Forecasted debt ratio under current policy parameters</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-               <h2 style={{ margin: 0 }}>{debt_to_gdp_projection[debt_to_gdp_projection.length - 1]?.ratio || 0}%</h2>
-               <p style={{ margin: 0, fontSize: '0.75rem' }}>Peak Debt ({debt_to_gdp_projection[debt_to_gdp_projection.length - 1]?.year || '5 Years'})</p>
-            </div>
+      {/* ── Charts ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div className="card" style={{ padding: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+            <h3 style={{ margin: 0, fontSize: '0.8125rem' }}>Debt-to-GDP Projection</h3>
+            <span style={{ fontSize: '1rem', fontWeight: 700 }}>{debt_to_gdp_projection[debt_to_gdp_projection.length - 1]?.ratio}%</span>
           </div>
-          <div className="chart-container">
+          <div style={{ height: '220px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={debt_to_gdp_projection} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+              <AreaChart data={debt_to_gdp_projection} margin={{ top: 12, right: 8, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorRatio" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--accent-blue)" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="var(--accent-blue)" stopOpacity={0}/>
+                  <linearGradient id="cR" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.08} />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-tertiary)' }} dy={10} />
-                <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }}
-                  itemStyle={{ color: 'var(--accent-blue)', fontWeight: 600 }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="ratio" 
-                  stroke="var(--accent-blue)" 
-                  strokeWidth={3} 
-                  fillOpacity={1} 
-                  fill="url(#colorRatio)" 
-                  activeDot={{ r: 6, strokeWidth: 0, fill: 'var(--accent-blue)' }}
-                  dot={{ r: 4, strokeWidth: 2, fill: 'white', stroke: 'var(--accent-blue)' }}
-                />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
+                <XAxis dataKey="year" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} domain={['dataMin - 5', 'dataMax + 5']} />
+                <Tooltip contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)' }} />
+                <Area type="monotone" dataKey="ratio" stroke="var(--accent)" strokeWidth={2} fill="url(#cR)" dot={{ r: 3, fill: 'white', stroke: 'var(--accent)', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="card dashboard-hero">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <h3 style={{ margin: 0 }}>Baseline vs. Stress Scenarios</h3>
-              <p style={{ margin: 0, fontSize: '0.875rem' }}>Fiscal Year 2025 Variance Analysis</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-               <h2 style={{ margin: 0, color: delta < 0 ? '#16a34a' : 'var(--accent-red)' }}>{delta > 0 ? '+' : ''}${delta}B</h2>
-               <p style={{ margin: 0, fontSize: '0.75rem' }}>Net Variance</p>
-            </div>
+        <div className="card" style={{ padding: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+            <h3 style={{ margin: 0, fontSize: '0.8125rem' }}>Baseline vs. Stress</h3>
+            <span style={{ fontSize: '1rem', fontWeight: 700, color: delta > 0 ? 'var(--red)' : 'var(--green)' }}>{delta > 0 ? '+' : ''}${delta}B</span>
           </div>
-          <div className="chart-container">
+          <div style={{ height: '220px' }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={baseline_vs_stress} margin={{ top: 20, right: 0, left: 0, bottom: 0 }} barGap={0}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)', fontWeight: 500 }} dy={10} />
-                <YAxis hide />
-                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)' }} />
-                <Bar dataKey="baseline" fill="#e2e8f0" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="stress" fill="var(--accent-blue)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              <BarChart data={baseline_vs_stress} margin={{ top: 12, right: 0, left: -20, bottom: 0 }} barGap={2}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-light)" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: 'var(--text-tertiary)', fontWeight: 500 }} dy={6} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} />
+                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.75rem', boxShadow: 'var(--shadow)' }} />
+                <Bar dataKey="baseline" fill="var(--border-color)" radius={[3, 3, 0, 0]} maxBarSize={28} name="Baseline" />
+                <Bar dataKey="stress" fill="var(--accent)" radius={[3, 3, 0, 0]} maxBarSize={28} name="Stress" />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginTop: '1rem' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-               <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#e2e8f0' }}></div> Baseline
-             </div>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-               <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--accent-blue)' }}></div> Stress Scenario
-             </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.25rem' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}><span style={{ width: '6px', height: '6px', borderRadius: '1px', background: 'var(--border-color)', display: 'inline-block' }}></span> Baseline</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.625rem', color: 'var(--text-tertiary)' }}><span style={{ width: '6px', height: '6px', borderRadius: '1px', background: 'var(--accent)', display: 'inline-block' }}></span> Stress</span>
           </div>
         </div>
       </div>
 
-      {/* Bottom Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem' }}>
-        <div>
-           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-blue)', marginBottom: '1rem', fontSize: '1.125rem' }}>
-             <AlertTriangle size={20} /> Early Warning Signals
-           </h3>
-           {early_warnings.length > 0 ? early_warnings.map((warning, idx) => (
-               <div key={idx} className={`warning-item ${warning.type === 'Liquidity' ? 'warning-item-red' : 'warning-item-yellow'}`}>
-                 <div style={{ background: warning.type === 'Liquidity' ? 'var(--accent-red-light)' : 'var(--warning-yellow-light)', padding: '0.5rem', borderRadius: '50%', height: 'fit-content' }}>
-                   {warning.type === 'Liquidity' ? <Droplets size={20} color="var(--accent-red)" /> : <TrendingDown size={20} color="var(--warning-yellow)" />}
-                 </div>
-                 <div>
-                   <h5 style={{ margin: 0, marginBottom: '0.25rem' }}>{warning.title}</h5>
-                   <p style={{ margin: 0, fontSize: '0.875rem' }}>{warning.description}</p>
-                 </div>
-               </div>
-           )) : (
-             <p style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>No critical early warnings detected.</p>
-           )}
+      {/* ── What-If + Warnings ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        {/* What-If Analysis */}
+        <div className="card" style={{ padding: '1rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.75rem' }}>
+            <SlidersHorizontal size={14} /> What-If Analysis
+          </h3>
+          {whatIfSpending !== null && (
+            <>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Spending Commitment</label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>${whatIfSpending.toFixed(1)}B</span>
+                </div>
+                <input type="range" min="0" max="20" step="0.1" value={whatIfSpending} onChange={e => setWhatIfSpending(+e.target.value)}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Revenue Impact</label>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{whatIfRevenue.toFixed(1)}%</span>
+                </div>
+                <input type="range" min="-10" max="5" step="0.1" value={whatIfRevenue} onChange={e => setWhatIfRevenue(+e.target.value)}
+                  style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              </div>
+              <div style={{ background: 'var(--bg-subtle)', borderRadius: '8px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', fontWeight: 600 }}>Projected Score</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem', marginTop: '0.125rem' }}>
+                    <span style={{ fontSize: '1.75rem', fontWeight: 700, lineHeight: 1, color: whatIfScore > 70 ? 'var(--red)' : whatIfScore > 40 ? 'var(--amber)' : 'var(--green)' }}>{whatIfScore}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>/100</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className={`badge ${whatIfScore > 70 ? 'badge-red' : whatIfScore > 40 ? 'badge-yellow' : ''}`}
+                    style={whatIfScore <= 40 ? { background: 'var(--green-light)', color: 'var(--green)' } : {}}>
+                    {riskLabel(whatIfScore)}
+                  </span>
+                  {whatIfScore !== fiscal_strain_score && (
+                    <p style={{ margin: 0, marginTop: '0.25rem', fontSize: '0.6875rem', color: whatIfScore < fiscal_strain_score ? 'var(--green)' : 'var(--red)', fontWeight: 500 }}>
+                      {whatIfScore < fiscal_strain_score ? '↓' : '↑'} {Math.abs(whatIfScore - fiscal_strain_score)} pts
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
-        <div>
-           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-blue)', marginBottom: '1rem', fontSize: '1.125rem' }}>
-             <Building size={20} /> Simulation Parameters & Breakdown
-           </h3>
-           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-             <div style={{ display: 'flex', padding: '1.5rem', borderBottom: '1px solid var(--border-color)', gap: '2rem' }}>
-                <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
-                   <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Spending Commitment</p>
-                   <h3 style={{ margin: '0.25rem 0' }}>${breakdown.spending_commitment}B</h3>
-                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Per annum base</p>
-                </div>
-                <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
-                   <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Revenue Impact</p>
-                   <h3 style={{ margin: '0.25rem 0', color: breakdown.revenue_impact < 0 ? 'var(--accent-red)' : '#16a34a' }}>{breakdown.revenue_impact}%</h3>
-                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Tax Base Variance</p>
-                </div>
-                <div style={{ flex: 1, borderRight: '1px solid var(--border-color)' }}>
-                   <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>Duration</p>
-                   <h3 style={{ margin: '0.25rem 0' }}>{breakdown.duration} Mos</h3>
-                   <p style={{ margin: 0, fontSize: '0.75rem' }}>Policy Lifecycle</p>
-                </div>
-                <div style={{ flex: 1 }}>
-                   <p style={{ margin: 0, fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Primary Sectors</p>
-                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
-                      {breakdown.sectors.map((s, idx) => (
-                        <span key={idx} className="badge badge-gray">{s}</span>
-                      ))}
-                   </div>
-                </div>
-             </div>
-             
-             <table className="data-table">
-               <thead>
-                 <tr>
-                   <th>Metric Category</th>
-                   <th>Baseline</th>
-                   <th>Stress Test</th>
-                   <th>Delta</th>
-                 </tr>
-               </thead>
-               <tbody>
-                 {breakdown.metrics && breakdown.metrics.map((m, idx) => (
-                 <tr key={idx}>
-                   <td style={{ fontWeight: 500 }}>{m.category}</td>
-                   <td>{m.baseline}</td>
-                   <td>{m.stress}</td>
-                   <td className={m.delta && m.delta.startsWith('+') ? "text-red" : ""}>{m.delta}</td>
-                 </tr>
-                 ))}
-               </tbody>
-             </table>
-             
-             <div style={{ padding: '1rem', textAlign: 'center', borderTop: '1px solid var(--border-color)' }}>
-                <a href="#" style={{ color: 'var(--accent-blue)', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600 }} onClick={(e) => { e.preventDefault(); alert("Opening detailed ledger..."); }}>View Full Detailed Ledger</a>
-             </div>
-           </div>
+        {/* Warnings */}
+        <div className="card" style={{ padding: '1rem' }}>
+          <h3 style={{ margin: 0, fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.75rem' }}>
+            <AlertTriangle size={14} /> Early Warnings
+          </h3>
+          {early_warnings.length > 0 ? early_warnings.map((w, i) => (
+            <div key={i} className={`warning-item ${w.type === 'Liquidity' ? 'warning-item-red' : 'warning-item-yellow'}`} style={{ padding: '0.625rem' }}>
+              <div style={{ background: w.type === 'Liquidity' ? 'var(--red-light)' : 'var(--amber-light)', padding: '0.25rem', borderRadius: '50%', height: 'fit-content' }}>
+                {w.type === 'Liquidity' ? <Droplets size={14} color="var(--red)" /> : <TrendingDown size={14} color="var(--amber)" />}
+              </div>
+              <div>
+                <h5 style={{ margin: 0, fontSize: '0.75rem' }}>{w.title}</h5>
+                <p style={{ margin: 0, fontSize: '0.6875rem' }}>{w.description}</p>
+              </div>
+            </div>
+          )) : (
+            <p style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', margin: 0 }}>No warnings detected.</p>
+          )}
         </div>
+      </div>
+
+      {/* ── AI Recommendations ── */}
+      <div className="card" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
+        <h3 style={{ margin: 0, fontSize: '0.8125rem', display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.75rem' }}>
+          <Lightbulb size={14} /> AI Mitigation Recommendations
+        </h3>
+        {recsLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+            <div style={{ width: '14px', height: '14px', border: '2px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }}></div>
+            Generating recommendations...
+          </div>
+        ) : recs && recs.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.625rem' }}>
+            {recs.slice(0, 3).map((r, i) => (
+              <div key={i} style={{ padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-light)', background: 'var(--bg-app)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.375rem' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: impactColors[r.impact]?.bg || 'var(--bg-subtle)', color: impactColors[r.impact]?.color || 'var(--text-secondary)' }}>
+                    {impactIcons[r.impact] || <Lightbulb size={12} />}
+                  </span>
+                  <span className="badge" style={{ background: impactColors[r.impact]?.bg || 'var(--bg-subtle)', color: impactColors[r.impact]?.color || 'var(--text-secondary)', fontSize: '0.5625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {r.impact} impact
+                  </span>
+                </div>
+                <h5 style={{ margin: 0, fontSize: '0.75rem', marginBottom: '0.25rem' }}>{r.title}</h5>
+                <p style={{ margin: 0, fontSize: '0.6875rem', lineHeight: 1.4 }}>{r.description}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>No recommendations available.</p>
+        )}
+      </div>
+
+      {/* ── Extracted Parameters ── */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: '1rem' }}>
+        <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border-light)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.8125rem' }}>Extracted Parameters</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div style={{ padding: '0.75rem 1rem', borderRight: '1px solid var(--border-light)' }}>
+            <p style={{ margin: 0, fontSize: '0.5625rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em', fontWeight: 600 }}>Spending</p>
+            <h3 style={{ margin: '0.125rem 0 0', fontSize: '1rem' }}>${breakdown.spending_commitment}B</h3>
+          </div>
+          <div style={{ padding: '0.75rem 1rem', borderRight: '1px solid var(--border-light)' }}>
+            <p style={{ margin: 0, fontSize: '0.5625rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em', fontWeight: 600 }}>Revenue</p>
+            <h3 style={{ margin: '0.125rem 0 0', fontSize: '1rem', color: breakdown.revenue_impact < 0 ? 'var(--red)' : 'var(--green)' }}>{breakdown.revenue_impact}%</h3>
+          </div>
+          <div style={{ padding: '0.75rem 1rem', borderRight: '1px solid var(--border-light)' }}>
+            <p style={{ margin: 0, fontSize: '0.5625rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em', fontWeight: 600 }}>Duration</p>
+            <h3 style={{ margin: '0.125rem 0 0', fontSize: '1rem' }}>{breakdown.duration}mo</h3>
+          </div>
+          <div style={{ padding: '0.75rem 1rem' }}>
+            <p style={{ margin: 0, fontSize: '0.5625rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em', fontWeight: 600 }}>Sectors</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
+              {(breakdown.sectors || []).map((s, i) => <span key={i} className="badge badge-gray" style={{ fontSize: '0.5625rem' }}>{s}</span>)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <div style={{ textAlign: 'center' }}>
+        <button className="btn btn-outline" style={{ fontSize: '0.75rem' }} onClick={() => navigate('/upload')}>← New Simulation</button>
       </div>
     </div>
   );

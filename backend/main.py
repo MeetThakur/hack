@@ -8,6 +8,8 @@ from typing import Optional
 
 from extractor import extract_policy_data
 from simulation import run_stress_test
+from advisor import generate_recommendations
+from fastapi.responses import Response
 
 # Load environment variables
 load_dotenv()
@@ -173,3 +175,110 @@ def get_results(policy_id: str):
     )
     results["policy_id"] = policy_id
     return results
+
+@app.get("/recommendations/{policy_id}")
+def get_recommendations(policy_id: str):
+    """Generate AI-powered mitigation recommendations."""
+    # Get simulation results first
+    results = None
+    mem = _memory_store.get(policy_id, {})
+    if "results" in mem:
+        results = mem["results"]
+    
+    if not results:
+        return []
+    
+    recs = generate_recommendations(results)
+    return recs
+
+@app.get("/export/{policy_id}")
+def export_report(policy_id: str):
+    """Generate a PDF report of simulation results."""
+    from fpdf import FPDF
+    import io
+    
+    mem = _memory_store.get(policy_id, {})
+    results = mem.get("results", {})
+    extracted = mem.get("extracted", {})
+    
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font('helvetica', 'B', 20)
+    pdf.cell(0, 12, 'Fiscal Stress Test Report', new_x='LMARGIN', new_y='NEXT', align='C')
+    pdf.ln(4)
+    
+    pdf.set_font('helvetica', '', 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 8, f'Policy ID: {policy_id}', new_x='LMARGIN', new_y='NEXT', align='C')
+    pdf.ln(8)
+    
+    # KPIs
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('helvetica', 'B', 14)
+    pdf.cell(0, 10, 'Key Performance Indicators', new_x='LMARGIN', new_y='NEXT')
+    pdf.ln(2)
+    
+    pdf.set_font('helvetica', '', 11)
+    score = results.get('fiscal_strain_score', 'N/A')
+    risk = results.get('risk_category', 'N/A')
+    deficit = results.get('projected_deficit_absolute', 'N/A')
+    depletion = results.get('reserve_depletion_year', 'N/A')
+    
+    pdf.cell(95, 8, f'Fiscal Strain Score: {score}/100', border=1)
+    pdf.cell(95, 8, f'Risk Category: {risk}', border=1, new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(95, 8, f'Projected Deficit: ${deficit}B', border=1)
+    pdf.cell(95, 8, f'Reserve Depletion: Year {depletion}', border=1, new_x='LMARGIN', new_y='NEXT')
+    pdf.ln(8)
+    
+    # Extracted Parameters
+    breakdown = results.get('breakdown', {})
+    pdf.set_font('helvetica', 'B', 14)
+    pdf.cell(0, 10, 'Extracted Policy Parameters', new_x='LMARGIN', new_y='NEXT')
+    pdf.ln(2)
+    pdf.set_font('helvetica', '', 11)
+    pdf.cell(0, 8, f'Spending Commitment: ${breakdown.get("spending_commitment", "N/A")}B per annum', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(0, 8, f'Revenue Impact: {breakdown.get("revenue_impact", "N/A")}%', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(0, 8, f'Duration: {breakdown.get("duration", "N/A")} months', new_x='LMARGIN', new_y='NEXT')
+    pdf.cell(0, 8, f'Sectors: {", ".join(breakdown.get("sectors", []))}', new_x='LMARGIN', new_y='NEXT')
+    pdf.ln(8)
+    
+    # Projections
+    projections = results.get('debt_to_gdp_projection', [])
+    if projections:
+        pdf.set_font('helvetica', 'B', 14)
+        pdf.cell(0, 10, '5-Year Debt-to-GDP Projection', new_x='LMARGIN', new_y='NEXT')
+        pdf.ln(2)
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.cell(95, 8, 'Year', border=1)
+        pdf.cell(95, 8, 'Debt-to-GDP Ratio (%)', border=1, new_x='LMARGIN', new_y='NEXT')
+        pdf.set_font('helvetica', '', 10)
+        for p in projections:
+            pdf.cell(95, 8, str(p.get('year', '')), border=1)
+            pdf.cell(95, 8, str(p.get('ratio', '')), border=1, new_x='LMARGIN', new_y='NEXT')
+    pdf.ln(8)
+    
+    # Warnings
+    warnings = results.get('early_warnings', [])
+    if warnings:
+        pdf.set_font('helvetica', 'B', 14)
+        pdf.cell(0, 10, 'Early Warning Signals', new_x='LMARGIN', new_y='NEXT')
+        pdf.ln(2)
+        pdf.set_font('helvetica', '', 11)
+        for w in warnings:
+            pdf.set_font('helvetica', 'B', 11)
+            pdf.cell(0, 8, f'{w.get("title", "")}', new_x='LMARGIN', new_y='NEXT')
+            pdf.set_font('helvetica', '', 10)
+            pdf.cell(0, 7, f'{w.get("description", "")}', new_x='LMARGIN', new_y='NEXT')
+            pdf.ln(2)
+    
+    buf = io.BytesIO()
+    pdf.output(buf)
+    buf.seek(0)
+    
+    return Response(
+        content=buf.read(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=stress_test_{policy_id[:8]}.pdf"}
+    )
