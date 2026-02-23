@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+const DEMO_EMAIL = 'demo@fiscalengine.com';
+const DEMO_PASSWORD = 'Demo@1234';
+
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,12 +13,12 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const signInWith = async (e, em, pw) => {
+    if (e) e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: em, password: pw });
       if (authError) throw authError;
       if (onLogin) onLogin(data.user);
       navigate('/upload');
@@ -54,7 +57,7 @@ export default function Login({ onLogin }) {
           <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Login to continue analyzing policies</p>
         </div>
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={(e) => signInWith(e, email, password)}>
           <div className="input-group">
             <div style={{ position: 'relative' }}>
               <Mail size={16} color="var(--text-tertiary)" style={{ position: 'absolute', top: '12px', left: '12px' }} />
@@ -100,6 +103,10 @@ export default function Login({ onLogin }) {
 
         <button type="button" className="btn btn-outline btn-full" onClick={handleSignUp} disabled={loading} style={{ padding: '0.625rem' }}>
           Sign Up
+        </button>
+
+        <button type="button" className="btn btn-secondary btn-full" onClick={(e) => signInWith(e, DEMO_EMAIL, DEMO_PASSWORD)} disabled={loading} style={{ padding: '0.625rem', marginTop: '0.75rem', background: 'var(--bg-subtle)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+          {loading ? 'Logging in as Demo...' : 'Demo Login'}
         </button>
 
         <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
