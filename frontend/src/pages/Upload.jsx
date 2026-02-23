@@ -21,7 +21,14 @@ export default function Upload() {
       const formData = new FormData();
       formData.append('file', file);
       const res = await fetch('http://127.0.0.1:8000/analyze-policy', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error("Analysis failed");
+      if (!res.ok) {
+        let errStr = "Analysis failed";
+        try {
+          const errData = await res.json();
+          if (errData.detail) errStr = errData.detail;
+        } catch(e) {}
+        throw new Error(errStr);
+      }
       const data = await res.json();
       setPolicyId(data.policy_id);
       setExtractedData(data.extracted_data);

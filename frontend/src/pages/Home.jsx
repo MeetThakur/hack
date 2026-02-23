@@ -13,17 +13,15 @@ export default function Home() {
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '600px', height: '600px', background: 'var(--accent)', filter: 'blur(150px)', opacity: 0.1, borderRadius: '50%', pointerEvents: 'none', zIndex: 0 }}></div>
 
         <div style={{ position: 'relative', zIndex: 1, maxWidth: '800px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.375rem 0.75rem', background: 'var(--bg-subtle)', border: '1px solid var(--border-color)', borderRadius: '100px', marginBottom: '1.5rem', fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>
-            <Sparkles size={14} /> AI-Powered Stress Testing
-          </div>
-          
+
+
           <h1 style={{ fontSize: '3.5rem', lineHeight: 1.1, marginBottom: '1.5rem', letterSpacing: '-0.02em' }}>
             Predict fiscal strain <br />
             <span style={{ color: 'var(--accent)' }}>before policies launch.</span>
           </h1>
           
           <p style={{ fontSize: '1.125rem', color: 'var(--text-secondary)', marginBottom: '2.5rem', maxWidth: '600px', margin: '0 auto 2.5rem', lineHeight: 1.6 }}>
-            Upload raw policy documents. Our AI instantly extracts economic parameters, simulates 5-year debt-to-GDP trajectories, and identifies early warning signals.
+            Upload raw policy documents. Our System instantly extracts economic parameters, simulates 5-year debt-to-GDP trajectories, and identifies early warning signals.
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>

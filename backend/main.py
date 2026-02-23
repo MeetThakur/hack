@@ -10,7 +10,7 @@ from simulation import run_stress_test
 from fastapi.responses import Response
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 app = FastAPI(title="Policy Stress Testing Engine API")
 
@@ -57,6 +57,10 @@ async def analyze_policy(file: UploadFile = File(...)):
 
     # 2. Extract data via AI
     extracted_data = extract_policy_data(text_content)
+
+    if not extracted_data.get("is_policy_document", True):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="The uploaded document does not appear to be a relevant fiscal policy or economic document. Please upload a valid policy.")
 
     # 3. Persist in memory
     policy_id = str(uuid.uuid4())

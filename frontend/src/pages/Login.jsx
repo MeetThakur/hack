@@ -1,23 +1,46 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Lock } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
-      if (email && password) {
-        if (onLogin) onLogin({ email });
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) throw authError;
+      if (onLogin) onLogin(data.user);
+      navigate('/upload');
+    } catch (err) {
+      setError(err.message || 'Login failed. Check your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!email || !password) { setError('Enter your email and password to sign up.'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const { data, error: authError } = await supabase.auth.signUp({ email, password });
+      if (authError) throw authError;
+      if (data.user && !data.session) {
+        setError('Check your inbox to confirm your email before logging in.');
+      } else if (data.user) {
+        if (onLogin) onLogin(data.user);
         navigate('/upload');
       }
     } catch (err) {
-      console.error(err);
+      setError(err.message || 'Sign up failed.');
     } finally {
       setLoading(false);
     }
@@ -62,25 +85,30 @@ export default function Login({ onLogin }) {
             </div>
           </div>
 
-          <div style={{ textAlign: 'right', marginBottom: '1.5rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--accent)', cursor: 'pointer' }}>Forgot password?</span>
-          </div>
+          {error && (
+            <div style={{ padding: '0.625rem 0.75rem', background: 'var(--red-light)', border: '1px solid var(--red)', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.8125rem', color: 'var(--red)' }}>
+              {error}
+            </div>
+          )}
 
-          <button type="submit" className="btn btn-primary btn-full" disabled={loading} style={{ padding: '0.75rem', fontSize: '0.9375rem' }}>
+          <button type="submit" className="btn btn-primary btn-full" disabled={loading} style={{ padding: '0.75rem', fontSize: '0.9375rem', marginBottom: '0.5rem' }}>
             {loading ? 'Signing In...' : 'Login'}
           </button>
         </form>
 
         <div className="divider">OR</div>
 
-        <button type="button" className="btn btn-outline btn-full" onClick={() => { if (onLogin) onLogin({ email: 'guest@example.com' }); navigate('/upload'); }} style={{ padding: '0.625rem' }}>
-          Continue as Guest
+        <button type="button" className="btn btn-outline btn-full" onClick={handleSignUp} disabled={loading} style={{ padding: '0.625rem' }}>
+          Sign Up
         </button>
 
         <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.8125rem', color: 'var(--text-tertiary)' }}>
-          Don't have an account? <span style={{ color: 'var(--accent)', cursor: 'pointer', fontWeight: 500 }}>Sign Up</span>
+          By continuing you agree to our Terms of Service.
         </p>
       </div>
     </div>
   );
 }
+
+
+
